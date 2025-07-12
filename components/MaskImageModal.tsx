@@ -87,7 +87,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0);
 
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillStyle = "black";
     rects.forEach((r) => ctx.fillRect(r.x, r.y, r.width, r.height));
 
     if (preview) {
