@@ -27,7 +27,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
     null
   );
-  const [maskRect, setMaskRect] = useState<DOMRect | null>(null);
+  const [maskRects, setMaskRects] = useState<DOMRect[]>([]);
 
   // 初期画像の読み込み
   useEffect(() => {
@@ -74,6 +74,27 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
     };
   };
 
+  const drawOverlay = (
+    rects: DOMRect[],
+    image: HTMLImageElement,
+    preview?: DOMRect
+  ) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0);
+
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    rects.forEach((r) => ctx.fillRect(r.x, r.y, r.width, r.height));
+
+    if (preview) {
+      ctx.fillRect(preview.x, preview.y, preview.width, preview.height);
+    }
+  };
+
   // 描画イベント
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
@@ -83,45 +104,44 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !startPos || !imageSize) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-
-    if (!canvas || !ctx) return;
+    if (!isDrawing || !startPos || !imageSize || !imageRef.current) return;
 
     const pos = getImageCoords(e);
-    const x = startPos.x;
-    const y = startPos.y;
-    const w = pos.x - x;
-    const h = pos.y - y;
+    const rect = new DOMRect(
+      Math.min(startPos.x, pos.x),
+      Math.min(startPos.y, pos.y),
+      Math.abs(pos.x - startPos.x),
+      Math.abs(pos.y - startPos.y)
+    );
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const imgEl = imageRef.current;
-
-    if (imgEl) {
-      ctx.drawImage(imgEl, 0, 0, imageSize.width, imageSize.height);
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(x, y, w, h);
-    }
+    drawOverlay(maskRects, imageRef.current, rect);
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!startPos) return;
     const pos = getImageCoords(e);
-    const x = Math.min(startPos.x, pos.x);
-    const y = Math.min(startPos.y, pos.y);
-    const width = Math.abs(pos.x - startPos.x);
-    const height = Math.abs(pos.y - startPos.y);
 
-    setMaskRect(new DOMRect(x, y, width, height));
+    const newRect = new DOMRect(
+      Math.min(startPos.x, pos.x),
+      Math.min(startPos.y, pos.y),
+      Math.abs(pos.x - startPos.x),
+      Math.abs(pos.y - startPos.y)
+    );
+
+    const updatedRects = [...maskRects, newRect];
+
+    setMaskRects(updatedRects);
     setIsDrawing(false);
     setStartPos(null);
+
+    if (imageRef.current) {
+      drawOverlay(updatedRects, imageRef.current);
+    }
   };
 
   // 出力用関数
   const handleSubmit = async () => {
-    if (!maskRect || !imageRef.current || !imageSize) return;
+    if (!maskRects.length || !imageRef.current || !imageSize) return;
 
     const tempCanvas = document.createElement("canvas");
 
@@ -137,7 +157,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
 
     // マスク部分を黒塗り
     ctx.fillStyle = "black";
-    ctx.fillRect(maskRect.x, maskRect.y, maskRect.width, maskRect.height);
+    maskRects.forEach((r) => ctx.fillRect(r.x, r.y, r.width, r.height));
 
     // ファイルに変換して送出
     const dataUrl = tempCanvas.toDataURL("image/png");
@@ -146,6 +166,13 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
 
     onSubmit(file);
     onClose();
+  };
+
+  const handleReset = () => {
+    setMaskRects([]);
+    if (imageRef.current) {
+      drawOverlay([], imageRef.current);
+    }
   };
 
   return (
@@ -172,10 +199,17 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
           </div>
         </ModalBody>
         <ModalFooter>
+          <Button color="secondary" variant="light" onPress={handleReset}>
+            リセット
+          </Button>
           <Button color="danger" variant="light" onPress={onClose}>
             Close
           </Button>
-          <Button color="primary" disabled={!maskRect} onPress={handleSubmit}>
+          <Button
+            color="primary"
+            disabled={!maskRects.length}
+            onPress={handleSubmit}
+          >
             OK
           </Button>
         </ModalFooter>
