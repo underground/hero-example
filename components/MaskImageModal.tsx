@@ -47,6 +47,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
         // 実canvasサイズも画像と同じにしておく（描画用）
         canvas.width = img.width;
         canvas.height = img.height;
+        drawOverlay([], img);
 
         const ctx = canvas.getContext("2d");
 
@@ -165,6 +166,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
     const file = new File([blob], "masked.png", { type: "image/png" });
 
     onSubmit(file);
+    handleReset();
     onClose();
   };
 
