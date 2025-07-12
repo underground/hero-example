@@ -9,81 +9,142 @@ import {
 } from "@heroui/modal";
 import React, { useEffect, useRef, useState } from "react";
 
-type Point = { x: number; y: number };
-type Rect = { start: Point; end: Point };
-
-export const MaskImageModal = ({
-  src,
-  isOpen,
-  onClose,
-  onConfirm,
-}: {
+type Props = {
   src: string;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (url: string) => void; // ★追加
-}) => {
+  onSubmit: (file: File) => void;
+};
+
+export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const [imageSize, setImageSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [maskRect, setMaskRect] = useState<DOMRect | null>(null);
 
-  const [currentStart, setCurrentStart] = useState<Point | null>(null); // 今クリック中の始点
-  const [rects, setRects] = useState<Rect[]>([]); // 確定済みの矩形一覧
-
+  // 初期画像の読み込み
   useEffect(() => {
-    const img = imageRef.current;
+    if (!src || !isOpen) return;
 
-    if (img) drawAllMasks(img, rects);
-  }, [rects]);
+    const img = new Image();
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    img.crossOrigin = "anonymous";
+    img.src = src;
+
+    img.onload = () => {
+      setImageSize({ width: img.width, height: img.height });
+
+      const canvas = canvasRef.current;
+
+      if (canvas) {
+        // 実canvasサイズも画像と同じにしておく（描画用）
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const ctx = canvas.getContext("2d");
+
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        }
+      }
+    };
+  }, [src, isOpen]);
+
+  // canvas 表示サイズ上の座標 → 画像上の実座標へ変換
+  const getImageCoords = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
 
-    if (!canvas) return;
+    if (!canvas || !imageSize) return { x: 0, y: 0 };
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = imageSize.width / rect.width;
+    const scaleY = imageSize.height / rect.height;
 
-    if (!currentStart) {
-      setCurrentStart({ x, y }); // 1回目クリック: start座標を記録
-    } else {
-      const newRect = { start: currentStart, end: { x, y } };
-
-      setRects((prev) => [...prev, newRect]); // rect確定
-      setCurrentStart(null);
-    }
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    };
   };
 
-  const drawAllMasks = (img: HTMLImageElement, rects: Rect[]) => {
+  // 描画イベント
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const pos = getImageCoords(e);
+
+    setStartPos(pos);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !startPos || !imageSize) return;
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
 
     if (!canvas || !ctx) return;
 
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    const pos = getImageCoords(e);
+    const x = startPos.x;
+    const y = startPos.y;
+    const w = pos.x - x;
+    const h = pos.y - y;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const imgEl = imageRef.current;
 
-    ctx.fillStyle = "rgba(0,0,0,1)";
-    rects.forEach(({ start, end }) => {
-      const x = Math.min(start.x, end.x);
-      const y = Math.min(start.y, end.y);
-      const width = Math.abs(end.x - start.x);
-      const height = Math.abs(end.y - start.y);
-
-      ctx.fillRect(x, y, width, height);
-    });
+    if (imgEl) {
+      ctx.drawImage(imgEl, 0, 0, imageSize.width, imageSize.height);
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(x, y, w, h);
+    }
   };
 
-  const handleConfirm = () => {
-    const canvas = canvasRef.current;
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!startPos) return;
+    const pos = getImageCoords(e);
+    const x = Math.min(startPos.x, pos.x);
+    const y = Math.min(startPos.y, pos.y);
+    const width = Math.abs(pos.x - startPos.x);
+    const height = Math.abs(pos.y - startPos.y);
 
-    if (!canvas) return;
-    const url = canvas.toDataURL("image/png");
+    setMaskRect(new DOMRect(x, y, width, height));
+    setIsDrawing(false);
+    setStartPos(null);
+  };
 
-    onConfirm(url);
+  // 出力用関数
+  const handleSubmit = async () => {
+    if (!maskRect || !imageRef.current || !imageSize) return;
+
+    const tempCanvas = document.createElement("canvas");
+
+    tempCanvas.width = imageSize.width;
+    tempCanvas.height = imageSize.height;
+
+    const ctx = tempCanvas.getContext("2d");
+
+    if (!ctx) return;
+
+    // 元画像を描画
+    ctx.drawImage(imageRef.current, 0, 0, imageSize.width, imageSize.height);
+
+    // マスク部分を黒塗り
+    ctx.fillStyle = "black";
+    ctx.fillRect(maskRect.x, maskRect.y, maskRect.width, maskRect.height);
+
+    // ファイルに変換して送出
+    const dataUrl = tempCanvas.toDataURL("image/png");
+    const blob = await fetch(dataUrl).then((res) => res.blob());
+    const file = new File([blob], "masked.png", { type: "image/png" });
+
+    onSubmit(file);
     onClose();
   };
 
@@ -92,17 +153,21 @@ export const MaskImageModal = ({
       <ModalContent>
         <ModalHeader>Modal Title</ModalHeader>
         <ModalBody>
-          <div className="relative min-h-[70vh] overflow-auto flex justify-center">
+          <div className="relative w-full">
             <img
               ref={imageRef}
-              alt="original"
-              className="object-contain max-w-full min-h-[70vh] absolute top-0 left-0 z-0"
+              alt="mask target"
+              className="w-full h-auto object-contain pointer-events-none"
               src={src}
+              style={{ display: imageSize ? "block" : "none" }}
             />
             <canvas
               ref={canvasRef}
-              className="object-contain max-w-full min-h-[70vh] absolute top-0 left-0 z-0"
-              onClick={handleClick}
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ display: imageSize ? "block" : "none" }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
             />
           </div>
         </ModalBody>
@@ -110,7 +175,7 @@ export const MaskImageModal = ({
           <Button color="danger" variant="light" onPress={onClose}>
             Close
           </Button>
-          <Button color="primary" onClick={handleConfirm}>
+          <Button color="primary" disabled={!maskRect} onPress={handleSubmit}>
             OK
           </Button>
         </ModalFooter>

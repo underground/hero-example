@@ -1,34 +1,58 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Input } from "@heroui/input";
-import { Button } from "@heroui/button";
 
 import { MaskImageModal } from "@/components/MaskImageModal";
 
 export default function App() {
-  const [url, setUrl] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [src, setSrc] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [maskedUrl, setMaskedUrl] = useState<string | null>(null);
 
-  const handleConfirm = (masked: string) => {
-    setMaskedUrl(masked);
-    setOpen(false);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+
+    if (selected) {
+      setFile(selected);
+      setSrc(URL.createObjectURL(selected));
+      setOpen(true);
+    }
   };
+
+  const handleSubmit = (file: File) => {
+    const url = URL.createObjectURL(file);
+
+    setMaskedUrl(url);
+    setOpen(false);
+
+    // ダウンロード
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = file.name; // 例: "masked.png"
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (src.startsWith("blob:")) {
+        URL.revokeObjectURL(src);
+      }
+    };
+  }, [src]);
 
   return (
     <div className="p-6 space-y-6 max-w-md mx-auto">
-      <Input
-        placeholder="画像URLを入力"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-      />
-      <Button onClick={() => setOpen(true)}>マスキング開始</Button>
+      <Input accept="image/*" type="file" onChange={handleFileChange} />
 
       <MaskImageModal
         isOpen={open}
-        src={url}
+        src={src}
         onClose={() => setOpen(false)}
-        onConfirm={handleConfirm} // ★ コールバック
+        onSubmit={handleSubmit}
       />
 
       {maskedUrl && (
