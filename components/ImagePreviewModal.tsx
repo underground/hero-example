@@ -7,7 +7,7 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/modal";
-import React from "react";
+import React, { useState } from "react";
 import React from "react";
 
 type Props = {
@@ -21,6 +21,12 @@ export const ImagePreviewModal: React.FC<Props> = ({
   isOpen,
   onClose,
 }) => {
+  const [scale, setScale] = useState(1);
+
+  const toggleZoom = () => {
+    setScale((prev) => (prev === 1 ? 2 : 1)); // 1倍 → 2倍 → 1倍のトグル
+  };
+
   return (
     <Modal isOpen={isOpen} scrollBehavior="inside" size="5xl" onClose={onClose}>
       <ModalContent>
@@ -31,6 +37,13 @@ export const ImagePreviewModal: React.FC<Props> = ({
               alt="preview"
               className="w-full h-auto object-contain rounded"
               src={src}
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: "center center",
+                cursor: scale === 1 ? "zoom-in" : "zoom-out",
+                transition: "transform 0.3s",
+              }}
+              onClick={toggleZoom}
             />
           </div>
         </ModalBody>
