@@ -38,6 +38,7 @@ export const ImagePreviewModal: React.FC<Props> = ({
               className="w-full h-auto object-contain rounded"
               src={src}
               style={{
+                overflow: "scroll",
                 transform: `scale(${scale})`,
                 transformOrigin: "center center",
                 cursor: scale === 1 ? "zoom-in" : "zoom-out",
