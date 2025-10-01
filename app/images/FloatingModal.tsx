@@ -1,5 +1,4 @@
 import { useRef } from "react";
-import Image from "next/image";
 
 import { usePanZoom } from "@/app/images/usePanZoom";
 import { useDrag } from "@/app/images/useDrag";
@@ -106,13 +105,11 @@ export const FloatingModal = ({
         <div
           className={`relative w-full h-[calc(100%-${HEADER_H}px)] bg-black flex items-center justify-center`}
         >
-          <Image
+          <img
             ref={imgRef}
-            fill
-            alt={win.alt}
+            alt={win.alt ?? ""}
             className="w-full object-contain select-none relative z-0"
             draggable={false}
-            sizes={`${win.w}px`} // モーダルの幅に合わせて固定幅を指定
             src={win.src}
             style={{
               objectFit: "contain",
