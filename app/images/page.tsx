@@ -95,6 +95,19 @@ export default function HeroUIDraggableGallery() {
       })
     );
 
+  const updateSize = (id, width, height) =>
+    setWins((p) =>
+      p.map((w) => {
+        if (w.winId !== id) return w;
+
+        return {
+          ...w,
+          w: width,
+          h: height,
+        };
+      })
+    );
+
   const close = (id: string) => setWins((p) => p.filter((w) => w.winId !== id));
 
   const images = [
@@ -224,6 +237,7 @@ export default function HeroUIDraggableGallery() {
           bringToFront={bringToFront}
           close={close}
           updatePos={updatePos}
+          updateSize={updateSize}
           win={win}
         />
       ))}
