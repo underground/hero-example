@@ -84,8 +84,8 @@ export default function HeroUIDraggableGallery() {
     setWins((p) =>
       p.map((w) => {
         if (w.winId !== id) return w;
-        const maxX = window.innerWidth - (w.w + MARGIN);
-        const maxY = window.innerHeight - (w.h + HEADER_H + MARGIN);
+        const maxX = window.innerWidth - w.w;
+        const maxY = window.innerHeight - (w.h + HEADER_H);
 
         return {
           ...w,

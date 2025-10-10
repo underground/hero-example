@@ -35,6 +35,7 @@ export const FloatingModal = ({
 
   const handleRef = useRef<HTMLDivElement>(null); // ドラッグはヘッダーだけで受ける
   const resizeBLRef = useRef<HTMLDivElement>(null); // 左下リサイズハンドル
+  const resizeBRRef = useRef<HTMLDivElement>(null); // 右下
   const base = useRef({ x: win.x, y: win.y });
 
   const { zoom, pan, zoomIn, zoomOut, reset, setPanBase } = usePanZoom(
@@ -43,6 +44,7 @@ export const FloatingModal = ({
     { step: 0.5 }
   );
 
+  // ヘッダー部分のドラッグでウィンドウ移動
   useDrag(handleRef, {
     onDown: () => {
       bringToFront(win.winId);
@@ -51,99 +53,38 @@ export const FloatingModal = ({
         setPanBase(pan);
       }
     },
-    onDrag: (_e, { dx, dy }) =>
-      updatePos(win.winId, base.current.x + dx, base.current.y + dy),
-  });
-
-  // ─────────────────────────────────────────────
-  // 左下ハンドルでリサイズ（bottom-left）
-  // ─────────────────────────────────────────────
-  const resizeStart = useRef({
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-  });
-
-  useDrag(resizeBLRef, {
-    onDown: (e) => {
-      e.stopPropagation();
-      bringToFront(win.winId);
-      resizeStart.current = {
-        left: win.x,
-        top: win.y,
-        width: win.w,
-        height: win.h,
-        fixedRight: win.x + win.w,
-        fixedTop: win.y,
-      };
-    },
     onDrag: (_e, { dx, dy }) => {
-      const start = resizeStart.current;
-      const aspect = start.width / start.height;
+      let nextX = base.current.x + dx;
+      let nextY = base.current.y + dy;
+      // 下端がウィンドウを超えないように
+      const maxY = window.innerHeight - (win.h + HEADER_H);
 
-      // 右上座標はリサイズ開始時の値で固定
-      const fixedRight = start.fixedRight;
-      const fixedTop = start.fixedTop;
-
-      // bottom-left リサイズの基本式（右上固定）
-      let nextWidth = start.width - dx;
-      let nextHeight = start.height + dy;
-
-      // アスペクト比を保つ
-      const widthFromDx = start.width - dx;
-      const heightFromDx = widthFromDx / aspect;
-      const heightFromDy = start.height + dy;
-      const widthFromDy = heightFromDy * aspect;
-
-      if (Math.abs(dx) > Math.abs(dy)) {
-        nextWidth = widthFromDx;
-        nextHeight = heightFromDx;
-      } else {
-        nextHeight = heightFromDy;
-        nextWidth = widthFromDy;
-      }
-
-      // 最小サイズ補正
-      if (nextWidth < MIN_W) {
-        nextWidth = MIN_W;
-        nextHeight = MIN_W / aspect;
-      }
-      if (nextHeight < MIN_H) {
-        nextHeight = MIN_H;
-        nextWidth = MIN_H * aspect;
-      }
-
-      // 左座標は右端から幅を引いた位置
-      let nextLeft = fixedRight - nextWidth;
-      let nextTop = fixedTop;
-
-      // 画面境界補正
-      if (nextLeft < 0) {
-        nextLeft = 0;
-        nextWidth = fixedRight;
-        nextHeight = nextWidth / aspect;
-      }
-      const maxWidthByRight = Math.max(0, fixedRight - nextLeft);
-      const maxHeightByBottom = Math.max(
-        0,
-        window.innerHeight - nextTop - HEADER_H
-      );
-
-      if (nextWidth > maxWidthByRight) {
-        nextWidth = maxWidthByRight;
-        nextHeight = nextWidth / aspect;
-        nextLeft = fixedRight - nextWidth;
-      }
-      if (nextHeight > maxHeightByBottom) {
-        nextHeight = maxHeightByBottom;
-        nextWidth = nextHeight * aspect;
-        nextLeft = fixedRight - nextWidth;
-      }
-
-      updatePos(win.winId, nextLeft, nextTop);
-      updateSize(win.winId, nextWidth, nextHeight);
+      if (nextY > maxY) nextY = maxY;
+      if (nextY < 0) nextY = 0;
+      updatePos(win.winId, nextX, nextY);
     },
+    // onDrag: (_e, { dx, dy }) =>
+    //   updatePos(win.winId, base.current.x + dx, base.current.y + dy),
+  });
+
+  // 左下（右上固定）リサイズハンドル
+  useResizeHandle({
+    ref: resizeBLRef,
+    win,
+    bringToFront,
+    updatePos,
+    updateSize,
+    placement: "top-right",
+  });
+
+  // 右下（左上固定）リサイズハンドル
+  useResizeHandle({
+    ref: resizeBRRef,
+    win,
+    bringToFront,
+    updatePos,
+    updateSize,
+    placement: "top-left",
   });
 
   return (
@@ -228,10 +169,164 @@ export const FloatingModal = ({
               cursor-nesw-resize
               touch-none z-10
             "
-          title="resize from bottom-left"
+          onPointerDown={(e) => e.stopPropagation()}
+        />
+        {/* 右下リサイズハンドル */}
+        <div
+          ref={resizeBRRef}
+          className="
+              absolute bottom-0 right-0
+              translate-x-1/2 translate-y-1/2
+              h-8 w-8 rounded bg-gray-500
+              cursor-nwse-resize
+              touch-none z-10
+            "
           onPointerDown={(e) => e.stopPropagation()}
         />
       </div>
     </div>
   );
+};
+
+const useResizeHandle = ({
+  ref,
+  win,
+  bringToFront,
+  updatePos,
+  updateSize,
+  placement, // "top-right" | "top-left"
+}: {
+  ref: React.RefObject<HTMLDivElement>;
+  win: Win;
+  bringToFront: (id: string) => void;
+  updatePos: (id: string, x: number, y: number) => void;
+  updateSize: (id: string, w: number, h: number) => void;
+  placement: "top-right" | "top-left";
+}) => {
+  type ResizeStart = {
+    width: number;
+    height: number;
+    fixedX: number;
+    fixedTop: number;
+    isRightFixed: boolean;
+  };
+  const resizeStart = useRef<ResizeStart | null>(null);
+
+  useDrag(ref, {
+    onDown: (e) => {
+      e.stopPropagation();
+      bringToFront(win.winId);
+      if (placement === "top-right") {
+        // 開始位置
+        resizeStart.current = {
+          width: win.w,
+          height: win.h,
+          fixedX: win.x + win.w,
+          fixedTop: win.y,
+          isRightFixed: true,
+        };
+      } else {
+        resizeStart.current = {
+          width: win.w,
+          height: win.h,
+          fixedX: win.x,
+          fixedTop: win.y,
+          isRightFixed: false,
+        };
+      }
+    },
+    onDrag: (_e, { dx, dy }) => {
+      const start = resizeStart.current;
+
+      if (!start) {
+        return;
+      }
+      const aspect = start.width / start.height;
+
+      // アスペクト比を保ったリサイズ計算
+      const widthFromDx = start.isRightFixed
+        ? start.width - dx
+        : start.width + dx;
+      const heightFromDx = widthFromDx / aspect;
+      const heightFromDy = start.height + dy;
+      const widthFromDy = heightFromDy * aspect;
+
+      let nextWidth: number;
+      let nextHeight: number;
+      let nextLeft: number;
+      let nextTop: number;
+
+      // 横・縦どちらの変化が大きいかで主軸を決定
+      if (Math.abs(dx) > Math.abs(dy)) {
+        nextWidth = widthFromDx;
+        nextHeight = heightFromDx;
+      } else {
+        nextHeight = heightFromDy;
+        nextWidth = widthFromDy;
+      }
+
+      // 最小サイズ制約
+      if (nextWidth < MIN_W) {
+        nextWidth = MIN_W;
+        nextHeight = MIN_W / aspect;
+      }
+      if (nextHeight < MIN_H) {
+        nextHeight = MIN_H;
+        nextWidth = MIN_H * aspect;
+      }
+
+      nextTop = start.fixedTop;
+
+      if (start.isRightFixed) {
+        // 右上固定（左下リサイズ）
+        nextLeft = start.fixedX - nextWidth;
+        if (nextLeft < 0) {
+          nextLeft = 0;
+          nextWidth = start.fixedX;
+          nextHeight = nextWidth / aspect;
+        }
+        const maxWidth = Math.max(0, start.fixedX - nextLeft);
+        // 下端制約（ヘッダー分も考慮）
+        const maxHeight = Math.max(0, window.innerHeight - nextTop - HEADER_H);
+
+        // 横方向の最大制約
+        if (nextWidth > maxWidth) {
+          nextWidth = maxWidth;
+          nextHeight = nextWidth / aspect;
+          nextLeft = start.fixedX - nextWidth;
+        }
+        // 縦方向の最大制約
+        if (nextHeight > maxHeight) {
+          nextHeight = maxHeight;
+          nextWidth = nextHeight * aspect;
+          nextLeft = start.fixedX - nextWidth;
+          updatePos(win.winId, nextLeft, nextTop);
+          updateSize(win.winId, nextWidth, nextHeight);
+
+          return;
+        }
+      } else {
+        // 左上固定（右下リサイズ）
+        nextLeft = start.fixedX;
+        if (nextLeft + nextWidth > window.innerWidth) {
+          nextWidth = window.innerWidth - nextLeft;
+          nextHeight = nextWidth / aspect;
+        }
+        // 下端制約（ヘッダー分も考慮）
+        const maxHeight = Math.max(0, window.innerHeight - nextTop - HEADER_H);
+
+        if (nextHeight > maxHeight) {
+          nextHeight = maxHeight;
+          nextWidth = nextHeight * aspect;
+          updatePos(win.winId, nextLeft, nextTop);
+          updateSize(win.winId, nextWidth, nextHeight);
+
+          return;
+        }
+      }
+
+      updatePos(win.winId, nextLeft, nextTop);
+      updateSize(win.winId, nextWidth, nextHeight);
+    },
+  });
 };
