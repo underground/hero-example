@@ -25,9 +25,25 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
   } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
-    null
+    null,
   );
   const [maskRects, setMaskRects] = useState<DOMRect[]>([]);
+
+  const [displaySize, setDisplaySize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const syncDisplaySize = () => {
+    const imgEl = imageRef.current;
+
+    if (!imgEl) return;
+
+    setDisplaySize({
+      width: imgEl.clientWidth,
+      height: imgEl.clientHeight,
+    });
+  };
 
   // 初期画像の読み込み
   useEffect(() => {
@@ -47,7 +63,10 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
         // 実canvasサイズも画像と同じにしておく（描画用）
         canvas.width = img.width;
         canvas.height = img.height;
-        drawOverlay([], img);
+        requestAnimationFrame(() => {
+          syncDisplaySize();
+          drawOverlay([], img);
+        });
 
         const ctx = canvas.getContext("2d");
 
@@ -61,24 +80,28 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
 
   // canvas 表示サイズ上の座標 → 画像上の実座標へ変換
   const getImageCoords = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
+    const imgEl = imageRef.current;
 
-    if (!canvas || !imageSize) return { x: 0, y: 0 };
+    if (!imgEl || !imageSize) return { x: 0, y: 0 };
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = imgEl.getBoundingClientRect();
+
+    const localX = event.clientX - rect.left;
+    const localY = event.clientY - rect.top;
+
     const scaleX = imageSize.width / rect.width;
     const scaleY = imageSize.height / rect.height;
 
     return {
-      x: (event.clientX - rect.left) * scaleX,
-      y: (event.clientY - rect.top) * scaleY,
+      x: Math.max(0, Math.min(imageSize.width, localX * scaleX)),
+      y: Math.max(0, Math.min(imageSize.height, localY * scaleY)),
     };
   };
 
   const drawOverlay = (
     rects: DOMRect[],
     image: HTMLImageElement,
-    preview?: DOMRect
+    preview?: DOMRect,
   ) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -112,7 +135,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
       Math.min(startPos.x, pos.x),
       Math.min(startPos.y, pos.y),
       Math.abs(pos.x - startPos.x),
-      Math.abs(pos.y - startPos.y)
+      Math.abs(pos.y - startPos.y),
     );
 
     drawOverlay(maskRects, imageRef.current, rect);
@@ -126,7 +149,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
       Math.min(startPos.x, pos.x),
       Math.min(startPos.y, pos.y),
       Math.abs(pos.x - startPos.x),
-      Math.abs(pos.y - startPos.y)
+      Math.abs(pos.y - startPos.y),
     );
 
     const updatedRects = [...maskRects, newRect];
@@ -177,27 +200,61 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
     }
   };
 
+  const handleImageLoad = () => {
+    const imgEl = imageRef.current;
+    const canvas = canvasRef.current;
+
+    if (!imgEl || !canvas) return;
+
+    setImageSize({
+      width: imgEl.naturalWidth,
+      height: imgEl.naturalHeight,
+    });
+
+    canvas.width = imgEl.naturalWidth;
+    canvas.height = imgEl.naturalHeight;
+
+    requestAnimationFrame(() => {
+      setDisplaySize({
+        width: imgEl.clientWidth,
+        height: imgEl.clientHeight,
+      });
+      drawOverlay([], imgEl);
+    });
+  };
+
   return (
     <Modal isOpen={isOpen} scrollBehavior="inside" size="5xl" onClose={onClose}>
       <ModalContent>
         <ModalHeader>Modal Title</ModalHeader>
-        <ModalBody>
-          <div className="relative w-full">
-            <img
-              ref={imageRef}
-              alt="mask target"
-              className="w-full h-auto object-contain pointer-events-none"
-              src={src}
-              style={{ display: imageSize ? "block" : "none" }}
-            />
-            <canvas
-              ref={canvasRef}
-              className="absolute top-0 left-0 w-full h-full"
-              style={{ display: imageSize ? "block" : "none" }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-            />
+        <ModalBody className="overflow-hidden">
+          <div className="flex justify-center items-center w-full h-[70vh] overflow-hidden">
+            <div className="relative inline-block max-w-full max-h-full">
+              <img
+                ref={imageRef}
+                alt="mask target"
+                className="block max-w-full max-h-[70vh] w-auto h-auto object-contain pointer-events-none"
+                src={src}
+                style={{
+                  display: imageSize ? "block" : "none",
+                  userSelect: "none",
+                }}
+                onDragStart={(e) => e.preventDefault()}
+                onLoad={handleImageLoad}
+              />
+              <canvas
+                ref={canvasRef}
+                className="absolute top-0 left-0"
+                style={{
+                  display: imageSize ? "block" : "none",
+                  width: displaySize ? `${displaySize.width}px` : undefined,
+                  height: displaySize ? `${displaySize.height}px` : undefined,
+                }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+              />
+            </div>
           </div>
         </ModalBody>
         <ModalFooter>
