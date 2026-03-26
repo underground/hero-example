@@ -85,16 +85,21 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
     if (!imgEl || !imageSize) return { x: 0, y: 0 };
 
     const rect = imgEl.getBoundingClientRect();
-
     const localX = event.clientX - rect.left;
     const localY = event.clientY - rect.top;
 
-    const scaleX = imageSize.width / rect.width;
-    const scaleY = imageSize.height / rect.height;
+    if (
+      localX < 0 ||
+      localY < 0 ||
+      localX > rect.width ||
+      localY > rect.height
+    ) {
+      return null;
+    }
 
     return {
-      x: Math.max(0, Math.min(imageSize.width, localX * scaleX)),
-      y: Math.max(0, Math.min(imageSize.height, localY * scaleY)),
+      x: (localX / rect.width) * imageSize.width,
+      y: (localY / rect.height) * imageSize.height,
     };
   };
 
@@ -121,16 +126,21 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
 
   // 描画イベント
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDrawing(true);
     const pos = getImageCoords(e);
 
+    if (!pos) return;
+
+    setIsDrawing(true);
     setStartPos(pos);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !startPos || !imageSize || !imageRef.current) return;
+    if (!isDrawing || !startPos || !imageRef.current) return;
 
     const pos = getImageCoords(e);
+
+    if (!pos) return;
+
     const rect = new DOMRect(
       Math.min(startPos.x, pos.x),
       Math.min(startPos.y, pos.y),
@@ -144,6 +154,13 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!startPos) return;
     const pos = getImageCoords(e);
+
+    if (!pos) {
+      setIsDrawing(false);
+      setStartPos(null);
+
+      return;
+    }
 
     const newRect = new DOMRect(
       Math.min(startPos.x, pos.x),
@@ -229,7 +246,7 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
         <ModalHeader>Modal Title</ModalHeader>
         <ModalBody className="overflow-hidden">
           <div className="flex justify-center items-center w-full h-[70vh] overflow-hidden">
-            <div className="relative inline-block max-w-full max-h-full">
+            <div className="relative inline-block">
               <img
                 ref={imageRef}
                 alt="mask target"
@@ -246,9 +263,13 @@ export const MaskImageModal = ({ src, isOpen, onClose, onSubmit }: Props) => {
                 ref={canvasRef}
                 className="absolute top-0 left-0"
                 style={{
+                  width: imageRef.current?.clientWidth
+                    ? `${imageRef.current.clientWidth}px`
+                    : undefined,
+                  height: imageRef.current?.clientHeight
+                    ? `${imageRef.current.clientHeight}px`
+                    : undefined,
                   display: imageSize ? "block" : "none",
-                  width: displaySize ? `${displaySize.width}px` : undefined,
-                  height: displaySize ? `${displaySize.height}px` : undefined,
                 }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
